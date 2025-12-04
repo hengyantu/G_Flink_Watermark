@@ -1,7 +1,6 @@
 package com.example.watermark;
 
 import java.util.Random;
-import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.apache.flink.configuration.Configuration;
@@ -22,6 +21,7 @@ public class OutOfOrderEventSource extends RichParallelSourceFunction<UserEvent>
 
     private transient Random random;
     private transient String[] eventTypes;
+    private transient String[] userPool;
 
     /**
      * @param eventsPerSecond             每个并行子任务生成的事件数
@@ -47,6 +47,11 @@ public class OutOfOrderEventSource extends RichParallelSourceFunction<UserEvent>
     public void open(Configuration parameters) {
         this.random = new Random();
         this.eventTypes = new String[]{"click", "view", "purchase", "logout"};
+        // 创建固定的用户池，而不是每次生成新的UUID
+        this.userPool = new String[100];
+        for (int i = 0; i < userPool.length; i++) {
+            this.userPool[i] = "user-" + i;
+        }
     }
 
     @Override
@@ -55,6 +60,7 @@ public class OutOfOrderEventSource extends RichParallelSourceFunction<UserEvent>
         final long startMillis = System.currentTimeMillis();
         long emitted = 0L;
 
+        // 主要数据生成阶段
         while (running && shouldContinue(startMillis)) {
             final long emitStart = System.currentTimeMillis();
 
@@ -86,6 +92,30 @@ public class OutOfOrderEventSource extends RichParallelSourceFunction<UserEvent>
                 Thread.sleep(1000L - emitDuration);
             }
         }
+
+        // Grace period: 继续发送少量事件来推进 watermark
+        // 确保所有窗口都能被触发
+        if (runDurationMs > 0L && running) {
+            long gracePeriodMs = maxOutOfOrdernessMs + 5000L;
+            long gracePeriodStart = System.currentTimeMillis();
+
+            while (running && (System.currentTimeMillis() - gracePeriodStart) < gracePeriodMs) {
+                // 发送少量事件，时间戳为当前时间（不乱序）
+                long currentTimestamp = System.currentTimeMillis();
+                UserEvent event = new UserEvent(
+                        randomUserId(),
+                        randomEventType(),
+                        currentTimestamp,
+                        threadRandom.nextDouble(1.0, 500.0),
+                        currentTimestamp);
+
+                synchronized (ctx.getCheckpointLock()) {
+                    ctx.collect(event);
+                }
+
+                Thread.sleep(1000L);
+            }
+        }
     }
 
     @Override
@@ -101,7 +131,7 @@ public class OutOfOrderEventSource extends RichParallelSourceFunction<UserEvent>
     }
 
     private String randomUserId() {
-        return "user-" + UUID.randomUUID();
+        return userPool[random.nextInt(userPool.length)];
     }
 
     private String randomEventType() {
