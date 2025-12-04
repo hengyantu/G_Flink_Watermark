@@ -37,8 +37,9 @@ public final class WatermarkLatencyAnalysisJob {
         int eventsPerSecond = params.getInt("eventsPerSecond", 200);
         long runDurationMs = params.getLong("runDurationMs", 60000L);
         long maxOutOfOrdernessMs = params.getLong("maxOutOfOrdernessMs", watermarkDelayMs);
-        double lateEventFraction = params.getDouble("lateEventFraction", 0.05);
-        long severeLatenessUpperBoundMs = params.getLong("severeLatenessUpperBoundMs", watermarkDelayMs);
+        double lateEventFraction = params.getDouble("lateEventFraction", 0.1);
+        long severeLatenessUpperBoundMs = params.getLong("severeLatenessUpperBoundMs",
+                watermarkDelayMs + allowedLatenessMs + windowSizeMs + 5000L);
         int parallelism = params.getInt("parallelism", 2);
         long autoWatermarkIntervalMs = params.getLong("autoWatermarkIntervalMs", 200L);
         boolean enableCheckpointing = params.getBoolean("enableCheckpointing", false);
